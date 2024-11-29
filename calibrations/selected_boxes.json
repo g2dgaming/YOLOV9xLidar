@@ -1,0 +1,38 @@
+[
+    {
+        "name": "pratham",
+        "timestamp": "2024-11-29 23:15:54",
+        "box": {
+            "bbox": [
+                1055,
+                260,
+                1279,
+                715
+            ],
+            "confidence": 0.9040001630783081,
+            "class": "person"
+        },
+        "lidar_distance": {
+            "lidar_x": 141.4213562373095,
+            "lidar_y": 141.42135623730948
+        }
+    },
+    {
+        "name": "pratham",
+        "timestamp": "2024-11-29 23:16:01",
+        "box": {
+            "bbox": [
+                213,
+                118,
+                1038,
+                713
+            ],
+            "confidence": 0.9008809328079224,
+            "class": "person"
+        },
+        "lidar_distance": {
+            "lidar_x": 141.4213562373095,
+            "lidar_y": 141.42135623730948
+        }
+    }
+]
