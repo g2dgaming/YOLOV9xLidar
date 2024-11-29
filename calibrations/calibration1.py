@@ -2,20 +2,23 @@ import cv2
 import numpy as np
 import ydlidar
 import time
-
+import json
+import os
 class LidarCameraCalibration:
+    CONFIG_FILE = "calibration_config.json"  # Path to the configuration file
+
     def __init__(self):
         # Initialize variables for LiDAR and video processing
         self.lidar_points = None
         self.transformation_matrix = np.eye(4)  # 4x4 identity matrix for transformation
-
+        self.scaling_factor=50
         # Initialize OpenCV video capture (camera feed)
         self.cap = cv2.VideoCapture(0)  # 0 for the default camera
 
         # Initialize translation and rotation values
         self.translation = [0.0, 0.0, 0.0]  # x, y, z
         self.rotation = [0.0, 0.0, 0.0]  # roll, pitch, yaw
-
+        self.load_state()
         # Initialize YDLidar
         self.lidar = self.initialize_lidar()
 
@@ -68,7 +71,6 @@ class LidarCameraCalibration:
                 y = r * np.sin(angle)
                 lidar_points.append([x, y])
             self.lidar_points = np.array(lidar_points)
-            print("LiDAR Data: ", self.lidar_points)
         else:
             print("Failed to get LiDAR data")
 
@@ -90,8 +92,8 @@ class LidarCameraCalibration:
         Convert LiDAR (x, y) coordinates to camera image pixel coordinates (u, v).
         """
         height, width = frame_shape[:2]
-        u = int(x * 50 + width // 2)  # Scale and center
-        v = int(-y * 50 + height // 2)  # Scale and center
+        u = int(x * self.scaling_factor + width // 2)  # Scale and center
+        v = int(-y * self.scaling_factor + height // 2)  # Scale and center
         return u, v
 
     def process_keyboard_input(self, key):
@@ -122,9 +124,42 @@ class LidarCameraCalibration:
             self.rotation[2] += 0.1
         elif key == ord('o'):  # Rotate -Yaw
             self.rotation[2] -= 0.1
+        elif key == ord('-'):  # Scale -
+            self.scaling_factor-= 10
+        elif key == ord('+'):  # Scale +
+            self.scaling_factor += 10
 
         # Update the transformation matrix
         self.update_transformation_matrix()
+
+    def save_state(self):
+        """
+        Save the current calibration state to a JSON file.
+        """
+        state = {
+            "translation": self.translation,
+            "rotation": self.rotation,
+            "scaling_factor": self.scaling_factor,
+            "transformation_matrix": self.transformation_matrix.tolist(),  # Convert to list for JSON
+        }
+        with open(self.CONFIG_FILE, "w") as file:
+            json.dump(state, file, indent=4)
+        print(f"Saved state to {self.CONFIG_FILE}")
+
+    def load_state(self):
+        """
+        Load the calibration state from the JSON file.
+        """
+        if os.path.exists(self.CONFIG_FILE):
+            with open(self.CONFIG_FILE, "r") as file:
+                state = json.load(file)
+            self.translation = state.get("translation", [0.0, 0.0, 0.0])
+            self.rotation = state.get("rotation", [0.0, 0.0, 0.0])
+            self.scaling_factor = state.get("scaling_factor", 50)
+            self.transformation_matrix = np.array(state.get("transformation_matrix", np.eye(4)))
+            print(f"Loaded state from {self.CONFIG_FILE}")
+        else:
+            print("No saved state found, starting with defaults.")
 
     def update_transformation_matrix(self):
         """
@@ -137,6 +172,8 @@ class LidarCameraCalibration:
 
         self.transformation_matrix = rotation_matrix @ translation_matrix
 
+        # Save the state after updating the matrix
+        self.save_state()
     def rotation_matrix_from_euler_angles(self, angles):
         """
         Create a rotation matrix from Euler angles [roll, pitch, yaw].
@@ -188,6 +225,7 @@ class LidarCameraCalibration:
             if key == ord('x'):  # Exit on pressing 'x'
                 break
             elif key != 255:  # Process other keys
+                print("other key")
                 self.process_keyboard_input(key)
 
         # Release the video capture and close windows
