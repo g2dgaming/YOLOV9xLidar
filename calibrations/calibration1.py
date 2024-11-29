@@ -1,88 +1,146 @@
-import os
-import time
 import cv2
 import numpy as np
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import LaserScan, Image
-from cv_bridge import CvBridge
 import ydlidar
+import time
 
-
-class LidarCameraCalibration(Node):
+class LidarCameraCalibration:
     def __init__(self):
-        super().__init__('lidar_camera_calibration')
-        self.bridge = CvBridge()
-
-        # Subscribe to ROS topics
-        self.create_subscription(LaserScan, '/scan', self.lidar_callback, 10)
-        self.create_subscription(Image, '/camera/image', self.camera_callback, 10)
-
+        # Initialize variables for LiDAR and video processing
         self.lidar_points = None
-        self.camera_image = None
-        self.transformation_matrix = np.eye(4)  # Initial identity matrix
+        self.transformation_matrix = np.eye(4)  # 4x4 identity matrix for transformation
 
-    def lidar_callback(self, msg):
-        # Convert LaserScan data to Cartesian coordinates (x, y)
-        self.lidar_points = []
-        for i, range_value in enumerate(msg.ranges):
-            angle = msg.angle_min + i * msg.angle_increment
-            x = range_value * np.cos(angle)
-            y = range_value * np.sin(angle)
-            self.lidar_points.append([x, y])
-        self.lidar_points = np.array(self.lidar_points)
+        # Initialize OpenCV video capture (camera feed)
+        self.cap = cv2.VideoCapture(0)  # 0 for the default camera
 
-    def camera_callback(self, msg):
-        # Convert ROS image to OpenCV format
-        if self.lidar_points is not None:
-            self.camera_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            self.process_image()
+        # Initialize translation and rotation values
+        self.translation = [0.0, 0.0, 0.0]  # x, y, z
+        self.rotation = [0.0, 0.0, 0.0]  # roll, pitch, yaw
 
-    def process_image(self):
-        if self.camera_image is None or self.lidar_points is None:
-            return
+        # Initialize YDLidar
+        self.lidar = self.initialize_lidar()
 
-        # Apply the current transformation to lidar points
-        transformed_points = self.apply_transformation(self.lidar_points)
+    def initialize_lidar(self):
+        """
+        Initialize YDLidar and return the lidar object if successful.
+        """
+        ydlidar.os_init()  # Initialize YDLidar environment
+        ports = ydlidar.lidarPortList()
+        port = "/dev/ydlidar"  # Default port
 
-        # Superimpose lidar points on the camera feed
-        for point in transformed_points:
-            x, y = point[0], point[1]
-            u, v = self.lidar_to_image_coords(x, y)
-            if 0 <= u < self.camera_image.shape[1] and 0 <= v < self.camera_image.shape[0]:
-                cv2.circle(self.camera_image, (u, v), 2, (0, 0, 255), -1)
+        for key, value in ports.items():
+            port = value
+            print(f"Detected LiDAR port: {port}")
 
-        # Display the resulting image
-        cv2.imshow('Lidar Overlay', self.camera_image)
-        cv2.waitKey(1)
+        laser = ydlidar.CYdLidar()
+        laser.setlidaropt(ydlidar.LidarPropSerialPort, port)
+        laser.setlidaropt(ydlidar.LidarPropSerialBaudrate, 115200)
+        laser.setlidaropt(ydlidar.LidarPropLidarType, ydlidar.TYPE_TRIANGLE)
+        laser.setlidaropt(ydlidar.LidarPropDeviceType, ydlidar.YDLIDAR_TYPE_SERIAL)
+        laser.setlidaropt(ydlidar.LidarPropScanFrequency, 10.0)
+        laser.setlidaropt(ydlidar.LidarPropSampleRate, 3)
+        laser.setlidaropt(ydlidar.LidarPropSingleChannel, True)
+        laser.setlidaropt(ydlidar.LidarPropMaxAngle, 90.0)
+        laser.setlidaropt(ydlidar.LidarPropMinAngle, -90.0)
+        laser.setlidaropt(ydlidar.LidarPropMaxRange, 16.0)
+        laser.setlidaropt(ydlidar.LidarPropMinRange, 0.08)
+        laser.setlidaropt(ydlidar.LidarPropIntenstiy, False)
 
-    def lidar_to_image_coords(self, x, y):
-        # Convert lidar (x, y) to image pixel coordinates (u, v)
-        # Assuming no scaling or distortion, simple transformation for example
-        u = int(x * 10 + self.camera_image.shape[1] // 2)  # Basic scaling and centering
-        v = int(y * 10 + self.camera_image.shape[0] // 2)
-        return u, v
+        ret = laser.initialize()
+        if ret:
+            ret = laser.turnOn()
+            print("LiDAR turned on successfully!")
+            return laser
+        else:
+            print("Failed to initialize LiDAR")
+            return None
+
+    def get_lidar_data(self):
+        """
+        Get data from the LiDAR and process it into (x, y) coordinates.
+        """
+        scan = ydlidar.LaserScan()
+        if self.lidar.doProcessSimple(scan):
+            lidar_points = []
+            for i in range(scan.points.size()):
+                r = scan.points[i].range
+                angle = scan.points[i].angle
+                x = r * np.cos(angle)
+                y = r * np.sin(angle)
+                lidar_points.append([x, y])
+            self.lidar_points = np.array(lidar_points)
+            print("LiDAR Data: ", self.lidar_points)
+        else:
+            print("Failed to get LiDAR data")
 
     def apply_transformation(self, points):
-        # Apply the 4x4 transformation matrix to lidar points
-        transformed_points = []
-        for point in points:
-            point_homogeneous = np.array([point[0], point[1], 0, 1])  # Homogeneous coordinates
-            transformed_point = self.transformation_matrix @ point_homogeneous
-            transformed_points.append([transformed_point[0], transformed_point[1]])
-        return np.array(transformed_points)
+        """
+        Apply the transformation matrix to the LiDAR points.
+        """
+        # Convert LiDAR points to homogeneous coordinates (n x 4 matrix)
+        points_homogeneous = np.hstack(
+            (points, np.zeros((points.shape[0], 1)), np.ones((points.shape[0], 1))))  # Add z=0 and homogeneous=1
+        # Apply the transformation matrix to all points
+        transformed_points = (
+            self.transformation_matrix @ points_homogeneous.T).T  # Transpose for matrix multiplication
+        # Return only x, y coordinates
+        return transformed_points[:, :2]
 
-    def calibrate_transformation(self, translation, rotation):
-        # Update the transformation matrix with new translation and rotation
+    def lidar_to_image_coords(self, x, y, frame_shape):
+        """
+        Convert LiDAR (x, y) coordinates to camera image pixel coordinates (u, v).
+        """
+        height, width = frame_shape[:2]
+        u = int(x * 50 + width // 2)  # Scale and center
+        v = int(-y * 50 + height // 2)  # Scale and center
+        return u, v
+
+    def process_keyboard_input(self, key):
+        """
+        Process keyboard input to adjust the transformation matrix.
+        """
+        if key == ord('w'):  # Translate +Z
+            self.translation[2] += 0.1
+        elif key == ord('s'):  # Translate -Z
+            self.translation[2] -= 0.1
+        elif key == ord('a'):  # Translate -X
+            self.translation[0] -= 0.1
+        elif key == ord('d'):  # Translate +X
+            self.translation[0] += 0.1
+        elif key == ord('q'):  # Translate +Y
+            self.translation[1] += 0.1
+        elif key == ord('e'):  # Translate -Y
+            self.translation[1] -= 0.1
+        elif key == ord('i'):  # Rotate +Roll
+            self.rotation[0] += 0.1
+        elif key == ord('k'):  # Rotate -Roll
+            self.rotation[0] -= 0.1
+        elif key == ord('j'):  # Rotate +Pitch
+            self.rotation[1] += 0.1
+        elif key == ord('l'):  # Rotate -Pitch
+            self.rotation[1] -= 0.1
+        elif key == ord('u'):  # Rotate +Yaw
+            self.rotation[2] += 0.1
+        elif key == ord('o'):  # Rotate -Yaw
+            self.rotation[2] -= 0.1
+
+        # Update the transformation matrix
+        self.update_transformation_matrix()
+
+    def update_transformation_matrix(self):
+        """
+        Update the transformation matrix based on current translation and rotation.
+        """
         translation_matrix = np.eye(4)
-        translation_matrix[0:3, 3] = np.array(translation)
+        translation_matrix[0:3, 3] = np.array(self.translation)
 
-        rotation_matrix = self.rotation_matrix_from_euler_angles(rotation)
+        rotation_matrix = self.rotation_matrix_from_euler_angles(self.rotation)
 
         self.transformation_matrix = rotation_matrix @ translation_matrix
 
     def rotation_matrix_from_euler_angles(self, angles):
-        # Rotation matrix for euler angles [roll, pitch, yaw]
+        """
+        Create a rotation matrix from Euler angles [roll, pitch, yaw].
+        """
         roll, pitch, yaw = angles
         Rx = np.array([[1, 0, 0],
                        [0, np.cos(roll), -np.sin(roll)],
@@ -96,22 +154,46 @@ class LidarCameraCalibration(Node):
                        [np.sin(yaw), np.cos(yaw), 0],
                        [0, 0, 1]])
 
-        return Rx @ Ry @ Rz
+        rotation_matrix = np.eye(4)
+        rotation_matrix[0:3, 0:3] = Rx @ Ry @ Rz
+        return rotation_matrix
 
+    def run(self):
+        """
+        Main loop to process video and overlay LiDAR points.
+        """
+        while True:
+            # Read the camera frame
+            ret, frame = self.cap.read()
+            if not ret:
+                break
 
-def main(args=None):
-    rclpy.init(args=args)
+            # Get LiDAR data
+            self.get_lidar_data()
 
-    calibration_node = LidarCameraCalibration()
+            # Overlay LiDAR points on the video feed
+            if self.lidar_points is not None:
+                transformed_points = self.apply_transformation(self.lidar_points)
+                for point in transformed_points:
+                    x, y = point[0], point[1]
+                    u, v = self.lidar_to_image_coords(x, y, frame.shape)
+                    if 0 <= u < frame.shape[1] and 0 <= v < frame.shape[0]:
+                        cv2.circle(frame, (u, v), 2, (255, 0, 0), -1)  # Blue dot for projected points
 
-    # Example calibration values (translation in meters, rotation in radians)
-    calibration_node.calibrate_transformation([1.0, 0.0, 0.0], [0.0, 0.0, 0.0])
+            # Display the frame with the LiDAR overlay
+            cv2.imshow("Lidar Overlay", frame)
 
-    rclpy.spin(calibration_node)
+            # Process keyboard input
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('x'):  # Exit on pressing 'x'
+                break
+            elif key != 255:  # Process other keys
+                self.process_keyboard_input(key)
 
-    calibration_node.destroy_node()
-    rclpy.shutdown()
+        # Release the video capture and close windows
+        self.cap.release()
+        cv2.destroyAllWindows()
 
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    lidar_camera_calibration = LidarCameraCalibration()
+    lidar_camera_calibration.run()
