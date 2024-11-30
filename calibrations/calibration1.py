@@ -42,9 +42,9 @@ class LidarCameraCalibration:
         laser.setlidaropt(ydlidar.LidarPropScanFrequency, 10.0)
         laser.setlidaropt(ydlidar.LidarPropSampleRate, 3)
         laser.setlidaropt(ydlidar.LidarPropSingleChannel, True)
-        laser.setlidaropt(ydlidar.LidarPropMaxAngle, 90.0)
-        laser.setlidaropt(ydlidar.LidarPropMinAngle, -90.0)
-        laser.setlidaropt(ydlidar.LidarPropMaxRange, 16.0)
+        laser.setlidaropt(ydlidar.LidarPropMaxAngle, 100.0)
+        laser.setlidaropt(ydlidar.LidarPropMinAngle, -100.0)
+        laser.setlidaropt(ydlidar.LidarPropMaxRange, 1.23)
         laser.setlidaropt(ydlidar.LidarPropMinRange, 0.08)
         laser.setlidaropt(ydlidar.LidarPropIntenstiy, False)
 
@@ -101,33 +101,33 @@ class LidarCameraCalibration:
         Process keyboard input to adjust the transformation matrix.
         """
         if key == ord('w'):  # Translate +Z
-            self.translation[2] += 0.1
+            self.translation[2] += 0.2
         elif key == ord('s'):  # Translate -Z
-            self.translation[2] -= 0.1
+            self.translation[2] -= 0.2
         elif key == ord('a'):  # Translate -X
-            self.translation[0] -= 0.1
+            self.translation[0] -= 0.2
         elif key == ord('d'):  # Translate +X
-            self.translation[0] += 0.1
+            self.translation[0] += 0.2
         elif key == ord('q'):  # Translate +Y
-            self.translation[1] += 0.1
+            self.translation[1] += 0.2
         elif key == ord('e'):  # Translate -Y
-            self.translation[1] -= 0.1
+            self.translation[1] -= 0.2
         elif key == ord('i'):  # Rotate +Roll
-            self.rotation[0] += 0.1
+            self.rotation[0] += 0.05
         elif key == ord('k'):  # Rotate -Roll
-            self.rotation[0] -= 0.1
+            self.rotation[0] -= 0.05
         elif key == ord('j'):  # Rotate +Pitch
-            self.rotation[1] += 0.1
+            self.rotation[1] += 0.05
         elif key == ord('l'):  # Rotate -Pitch
-            self.rotation[1] -= 0.1
+            self.rotation[1] -= 0.05
         elif key == ord('u'):  # Rotate +Yaw
-            self.rotation[2] += 0.1
+            self.rotation[2] += 0.05
         elif key == ord('o'):  # Rotate -Yaw
-            self.rotation[2] -= 0.1
-        elif key == ord('-'):  # Scale -
-            self.scaling_factor-= 10
-        elif key == ord('+'):  # Scale +
-            self.scaling_factor += 10
+            self.rotation[2] -= 0.05
+        elif key == ord('['):  # Scale -
+            self.scaling_factor-= 20
+        elif key == ord(']'):  # Scale +
+            self.scaling_factor += 20
 
         # Update the transformation matrix
         self.update_transformation_matrix()
@@ -136,6 +136,7 @@ class LidarCameraCalibration:
         """
         Save the current calibration state to a JSON file.
         """
+        print("Translation",self.translation)
         state = {
             "translation": self.translation,
             "rotation": self.rotation,
