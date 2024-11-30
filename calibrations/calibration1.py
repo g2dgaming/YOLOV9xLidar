@@ -42,8 +42,8 @@ class LidarCameraCalibration:
         laser.setlidaropt(ydlidar.LidarPropScanFrequency, 10.0)
         laser.setlidaropt(ydlidar.LidarPropSampleRate, 3)
         laser.setlidaropt(ydlidar.LidarPropSingleChannel, True)
-        laser.setlidaropt(ydlidar.LidarPropMaxAngle, 90.0)
-        laser.setlidaropt(ydlidar.LidarPropMinAngle, -90.0)
+        laser.setlidaropt(ydlidar.LidarPropMaxAngle, 180.0)
+        laser.setlidaropt(ydlidar.LidarPropMinAngle, -180.0)
         laser.setlidaropt(ydlidar.LidarPropMaxRange, 16.0)
         laser.setlidaropt(ydlidar.LidarPropMinRange, 0.08)
         laser.setlidaropt(ydlidar.LidarPropIntenstiy, False)
@@ -91,6 +91,7 @@ class LidarCameraCalibration:
         """
         Convert LiDAR (x, y) coordinates to camera image pixel coordinates (u, v).
         """
+        print(self.scaling_factor)
         height, width = frame_shape[:2]
         u = int(x * self.scaling_factor + width // 2)  # Scale and center
         v = int(-y * self.scaling_factor + height // 2)  # Scale and center
@@ -101,33 +102,33 @@ class LidarCameraCalibration:
         Process keyboard input to adjust the transformation matrix.
         """
         if key == ord('w'):  # Translate +Z
-            self.translation[2] += 0.1
+            self.translation[2] += 0.2
         elif key == ord('s'):  # Translate -Z
-            self.translation[2] -= 0.1
+            self.translation[2] -= 0.2
         elif key == ord('a'):  # Translate -X
-            self.translation[0] -= 0.1
+            self.translation[0] -= 0.2
         elif key == ord('d'):  # Translate +X
-            self.translation[0] += 0.1
+            self.translation[0] += 0.2
         elif key == ord('q'):  # Translate +Y
-            self.translation[1] += 0.1
+            self.translation[1] += 0.2
         elif key == ord('e'):  # Translate -Y
-            self.translation[1] -= 0.1
+            self.translation[1] -= 0.2
         elif key == ord('i'):  # Rotate +Roll
-            self.rotation[0] += 0.1
+            self.rotation[0] += 0.05
         elif key == ord('k'):  # Rotate -Roll
-            self.rotation[0] -= 0.1
+            self.rotation[0] -= 0.05
         elif key == ord('j'):  # Rotate +Pitch
-            self.rotation[1] += 0.1
+            self.rotation[1] += 0.05
         elif key == ord('l'):  # Rotate -Pitch
-            self.rotation[1] -= 0.1
+            self.rotation[1] -= 0.05
         elif key == ord('u'):  # Rotate +Yaw
-            self.rotation[2] += 0.1
+            self.rotation[2] += 0.05
         elif key == ord('o'):  # Rotate -Yaw
-            self.rotation[2] -= 0.1
-        elif key == ord('-'):  # Scale -
-            self.scaling_factor-= 10
-        elif key == ord('+'):  # Scale +
-            self.scaling_factor += 10
+            self.rotation[2] -= 0.05
+        elif key == ord('['):  # Scale -
+            self.scaling_factor-= 20
+        elif key == ord(']'):  # Scale +
+            self.scaling_factor += 20
 
         # Update the transformation matrix
         self.update_transformation_matrix()
